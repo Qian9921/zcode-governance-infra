@@ -47,13 +47,17 @@ ALLOWED_KEYS = frozenset(
     }
 )
 SUBCOMMANDS = ("session-start", "pre-bash", "pre-file", "pre-tool", "post-agent")
+# 中性测试身份（不是任何真实用户名）：真实身份来自本机 gov-config/roles.json 的
+# identities 块，仓库测试一律用占位/中性值驱动 hook 的双身份守卫。
+TEST_DEV_LOGIN = "dev-login-x"
+TEST_GOV_LOGIN = "gov-login-y"
 GH_STUB_APPROVED = """#!/bin/sh
 case "$1 $2" in
-  "api user") echo "Liang9921" ;;
+  "api user") echo "%s" ;;
   "pr view") echo '{"number":123,"headRefOid":"%s","url":"https://github.com/o/r/pull/123"}' ;;
   *) exit 1 ;;
 esac
-""" % ("a" * 40)
+""" % (TEST_GOV_LOGIN, "a" * 40)
 
 
 def sha(value: str) -> str:
@@ -130,6 +134,19 @@ class HookTestCase(unittest.TestCase):
         path.write_text(body, encoding="utf-8")
         path.chmod(0o700)
         return str(path)
+
+    def configured_env(self, *, gov: str = TEST_GOV_LOGIN, dev: str = TEST_DEV_LOGIN) -> dict:
+        """Write a roles.json carrying non-placeholder identities and return its env.
+
+        The hook reads identities from ``ZGOV_ROLES_PATH`` first; pointing it at a
+        temp file keeps every subprocess away from any real ``~/.zcode/`` file.
+        """
+        path = self.root / "configured-roles.json"
+        path.write_text(
+            json.dumps({"identities": {"dev": dev, "governance": gov}}),
+            encoding="utf-8",
+        )
+        return {"ZGOV_ROLES_PATH": str(path)}
 
 
 # ---------------------------------------------------------------- 1 + 2
@@ -208,6 +225,7 @@ class ExistingGuardRegressionTests(HookTestCase):
 
     def test_merge_gate_denies_without_marker(self):
         env = {"GH_PATH": self.gh_stub(GH_STUB_APPROVED)}
+        env.update(self.configured_env())
         run = self.bash("gh pr merge 123", env=env)
         value = self.assertSchemaCompliant(run)
         self.assertEqual(value["permissionDecision"], "deny")
@@ -215,20 +233,50 @@ class ExistingGuardRegressionTests(HookTestCase):
         self.assertEqual([r["reason_code"] for r in run.receipts], ["merge_gate.no_marker"])
 
     def test_merge_gate_denies_wrong_identity(self):
-        stub = self.gh_stub('#!/bin/sh\ncase "$1 $2" in\n  "api user") echo Qian9921 ;;\n  *) exit 1 ;;\nesac\n')
-        run = self.bash("gh pr merge 123", env={"GH_PATH": stub})
+        stub = self.gh_stub('#!/bin/sh\ncase "$1 $2" in\n  "api user") echo dev-login-x ;;\n  *) exit 1 ;;\nesac\n')
+        env = {"GH_PATH": stub}
+        env.update(self.configured_env())
+        run = self.bash("gh pr merge 123", env=env)
         value = self.assertSchemaCompliant(run)
         self.assertEqual(value["permissionDecision"], "deny")
+        self.assertIn("gov-login-y", value["permissionDecisionReason"])
         self.assertEqual([r["reason_code"] for r in run.receipts], ["merge_gate.identity"])
 
     def test_merge_gate_is_fail_closed_when_gh_is_unreachable(self):
-        run = self.bash("gh pr merge 123")
+        env = self.configured_env()
+        run = self.bash("gh pr merge 123", env=env)
         value = self.assertSchemaCompliant(run)
         self.assertEqual(value["permissionDecision"], "deny")
         self.assertEqual([r["reason_code"] for r in run.receipts], ["merge_gate.identity"])
 
+    def test_merge_gate_denies_unconfigured_identity(self):
+        # 无任何 roles.json（占位符身份）：fail-closed，绝不因"没配置"而放行。
+        run = self.bash("gh pr merge 123")
+        value = self.assertSchemaCompliant(run)
+        self.assertEqual(value["permissionDecision"], "deny")
+        self.assertIn("未配置", value["permissionDecisionReason"])
+        self.assertEqual(
+            [r["reason_code"] for r in run.receipts],
+            ["merge_gate.identity_unconfigured"],
+        )
+
+    def test_identity_guard_denies_unconfigured_dev_identity(self):
+        run = self.bash("gh pr create --title x")
+        value = self.assertSchemaCompliant(run)
+        self.assertEqual(value["permissionDecision"], "deny")
+        self.assertIn("未配置", value["permissionDecisionReason"])
+        self.assertEqual([r["reason_code"] for r in run.receipts], ["identity.unconfigured"])
+
+    def test_identity_guard_denies_unconfigured_gov_identity(self):
+        run = self.bash("gh pr review 1")
+        value = self.assertSchemaCompliant(run)
+        self.assertEqual(value["permissionDecision"], "deny")
+        self.assertIn("未配置", value["permissionDecisionReason"])
+        self.assertEqual([r["reason_code"] for r in run.receipts], ["identity.unconfigured"])
+
     def test_identity_guard_is_fail_open_when_gh_is_unreachable(self):
-        run = self.bash("git push origin main")
+        env = self.configured_env()
+        run = self.bash("git push origin main", env=env)
         value = self.assertSchemaCompliant(run)
         self.assertNotIn("permissionDecision", value)
         # fail-open: warn receipt, then the unrelated rtk rewrite still applies.
@@ -239,8 +287,10 @@ class ExistingGuardRegressionTests(HookTestCase):
         self.assertEqual(value["updatedInput"]["command"], "rtk git push origin main")
 
     def test_identity_guard_denies_dev_action_under_governance_login(self):
-        stub = self.gh_stub('#!/bin/sh\ncase "$1 $2" in\n  "api user") echo Liang9921 ;;\n  *) exit 1 ;;\nesac\n')
-        run = self.bash("gh pr create --title x", env={"GH_PATH": stub})
+        stub = self.gh_stub('#!/bin/sh\ncase "$1 $2" in\n  "api user") echo gov-login-y ;;\n  *) exit 1 ;;\nesac\n')
+        env = {"GH_PATH": stub}
+        env.update(self.configured_env())
+        run = self.bash("gh pr create --title x", env=env)
         value = self.assertSchemaCompliant(run)
         self.assertEqual(value["permissionDecision"], "deny")
         self.assertEqual([r["reason_code"] for r in run.receipts], ["identity.mismatch"])

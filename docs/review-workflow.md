@@ -226,15 +226,23 @@ kind；且该 finding 必须出现在 pre-execution closure binding receipt 里
 
 ### 双身份
 
-```text
-GOV_LOGIN = "Liang9921"   治理身份：review / approve / merge
-DEV_LOGIN = "Qian9921"    开发身份：branch / commit / push / 开 PR
+两个 GitHub 账号的登录名**不在代码里**，由本机 `~/.zcode/gov-config/roles.json` 的
+`identities` 块配置（`gov/hooks/zcode_hook.py` 每次延迟读取，从不 import `zgov`）：
+
+```json
+"identities": {
+  "dev": "<开发身份的 GitHub 登录名>",
+  "governance": "<治理身份的 GitHub 登录名>"
+}
 ```
+
+- `identities.dev` = 开发身份：branch / commit / push / 开 PR；
+- `identities.governance` = 治理身份：review / approve / merge。
 
 `identity_guard()` 在 `PreToolUse`/`Bash` 上对 `gh pr review|merge`（治理动作）与
 `gh pr create|edit|comment|ready|close|lock` / `gh issue *` / `gh release *` / `gh repo *` /
-`git push`（开发动作）分别要求对应身份。identity guard 是 **fail-open** 的：`gh` 查询失败
-时放行（网络抖动不该挡住工作），只记 receipt。
+`git push`（开发动作）分别要求对应身份。身份未配置（仍是占位符）时 **fail-closed 拦截**
+（无法确认身份，绝不放行）；`gh` 查询失败时 fail-open（网络抖动不该挡住工作），只记 receipt。
 
 ### role 绑定
 
@@ -277,7 +285,7 @@ python3 ~/.zcode/gov/hooks/zcode_hook.py review-pass \
 
 | 步骤 | 失败 reason code | 说明 |
 |---|---|---|
-| 1. 身份 | `merge_gate.identity` | 必须是治理身份 `Liang9921`；否则提示 `gh auth switch --user`。 |
+| 1. 身份 | `merge_gate.identity` / `merge_gate.identity_unconfigured` | 必须是治理身份（`identities.governance`）；身份未配置时同样拦截并提示去 `gov-config/roles.json` 填写。 |
 | 2. 解析 PR | `merge_gate.pr_lookup_failed` / `merge_gate.pr_parse_failed` | live 查询 `number,headRefOid,url`，不用缓存。 |
 | 3. marker 存在性 | `merge_gate.no_marker` / `merge_gate.marker_corrupt` | 没有 APPROVE marker 就给出三步补救流程。 |
 | 4. 新鲜度与 head 绑定 | `merge_gate.marker_expired` / `merge_gate.head_drift` | marker TTL 7 天；`head_sha` 必须精确等于 live head。 |

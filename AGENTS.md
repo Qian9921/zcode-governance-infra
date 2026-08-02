@@ -11,4 +11,4 @@
 - Before review run `python3 scripts/verify-governance.py --repo .` and all three suites: `tests/gov`, `tests/hooks`, `tests/scripts` (`PYTHONPATH=gov python3 -m unittest discover -s tests/<dir> -p 'test_*.py' -t tests/<dir>`).
 - Compile and obey `zgov.review_runtime`: one formal review call, bounded delta/context/tool scope, soft report deadline, hard interrupt-and-replan deadline, and no duplicate full-scope review. Runtime budgets select routing; they never waive correctness or evidence.
 - Documentation may explain `review_policy.HIGH_RISK_TRIGGERS`, `trace._ESCALATION_TRIGGERS`, `tool_preflight` reason codes, and `tool_routing.PREFERRED_TOOL`, but may never extend them.
-- The repository is authored by Qian9921; Liang9921 is the independent governance reviewer and the only identity permitted to review, approve, or merge.
+- The repository carries no private usernames: the development identity is `identities.dev` and the governance reviewer identity is `identities.governance`, both configured in `gov-config/roles.json` on the user's machine (never committed here). The governance identity is the only one permitted to review, approve, or merge.

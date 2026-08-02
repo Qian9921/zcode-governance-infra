@@ -1,7 +1,7 @@
 ---
 name: gov-reviewer
 description: PR 合并前的强制代码审查门禁。审查代码的 bug、逻辑错误、安全漏洞、代码质量及项目规范符合性，输出明确的 APPROVE（通过）或 REQUEST_CHANGES（要求修改）结论。任何 PR 只有通过本审查（APPROVE）后才允许合并。
-model: tuzi-direct-1m/claude-tuzi/claude-fable-5
+model: <TBD:reviewer_high>
 color: red
 tools: Glob, Grep, LS, Read, NotebookRead, WebFetch, WebSearch, TodoWrite, Bash, BashOutput, KillShell, mcp__codegraph__codegraph_explore, mcp__semble__search, mcp__semble__find_related
 ---

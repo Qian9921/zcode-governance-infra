@@ -124,6 +124,32 @@ python3 scripts/install-governance.py --source . --zcode-home "$HOME/.zcode"
 
 失败时暂存目录被清理并向上抛出，`gov/` 保持在步骤 3 之前或之后的一致状态。
 
+## 2.5 填写 `roles.json`（必填，参数化配置）
+
+安装器把 `gov/roles.example.json` 播种为 `~/.zcode/gov-config/roles.json`（0600，仅缺失时
+创建，之后**永不覆盖**）。仓库内**不携带任何私有值**——模板里五个 model role 与两个
+GitHub 身份全是 `<TBD:*>` 占位符。**安装后必须手工编辑 `~/.zcode/gov-config/roles.json`**
+把占位符全部替换掉：
+
+1. `roles` 五个键：`writer` / `executor` / `reviewer_standard` / `reviewer_high` /
+   `auditor_spark` —— 填你的 ZCode surface 实际暴露的模型标识；
+2. `identities` 两个键：
+   - `dev` —— 开发身份（branch / commit / push / 开 PR）的 GitHub 登录名；
+   - `governance` —— 治理身份（review / approve / merge）的 GitHub 登录名。
+
+`efforts` / `agents` 保持模板默认值即可。编辑完成后**必须重启客户端并开新会话**（见第 4
+节），否则解析结果不生效。
+
+**未填时的行为（fail-closed，不是放行）**：
+
+- 任一 role 仍是占位符：任何**带裁决的制品**被 `ROLE_PLACEHOLDER_UNRESOLVED` 阻断
+  （`resolve_role()` / `require_roles_resolved()` 抛 `RolePlaceholderUnresolved`）——可以
+  写、可以跑测试，但不能出 approve；
+- `identities` 未配置（仍是占位符）：hook 的 merge gate 与身份守卫对 `gh pr merge` /
+  `gh pr review` / `gh pr create` / `git push` 等动作 **fail-closed 拦截**，deny 理由为
+  「治理身份未配置：请在 gov-config/roles.json 的 identities 里填写」，绝不因未配置而
+  放行。
+
 ## 3. 注册 hook
 
 ```bash

@@ -145,7 +145,7 @@ hook 只强化已声明路由并存储归一化的隐私安全 receipt；不从�
 
 ### 4.1 责任与并发
 
-持久父智能体负全责。默认约束：`max_depth=1`、最多两个并发写专家、独占路径租约、父子不写同一文件、单一 Git owner（Qian9921）。独立只读通道可在任务显式并发与用量预算内 fan out。
+持久父智能体负全责。默认约束：`max_depth=1`、最多两个并发写专家、独占路径租约、父子不写同一文件、单一 Git owner（开发身份 `identities.dev`，配置在本机 `gov-config/roles.json`）。独立只读通道可在任务显式并发与用量预算内 fan out。
 
 ### 4.2 子智能体禁令
 
@@ -401,7 +401,7 @@ gate 命令是直接 argv 数组（`shell=False`），运行在自有前台进�
 | 编译 `review-runtime.v16`（模型字段为占位符） | 可用，但不可作为裁决权威 |
 | 产出带裁决的制品（`independent-review.v16`、readiness 到 `REVIEW_READY`） | **fail-closed 阻断** |
 
-当前 `gov/roles.example.json` 的五个 role 均已解析为真实模型标识：`writer`→`tuzi-direct-1m/claude-tuzi/claude-opus-5`、`executor`→`e8ed5e30-e95d-45dc-b265-37acf2ba2583/deepseek-v4-flash`、`reviewer_standard`→`tuzi-direct-1m/claude-tuzi/claude-fable-5`、`reviewer_high`→`tuzi-direct-1m/claude-tuzi/claude-fable-5`、`auditor_spark`→`tuzi-direct-1m/claude-tuzi/claude-fable-5`；`agents` 映射为 `reviewer_standard`→`gov-reviewer`、`reviewer_high`→`gov-reviewer`、`executor`→`gov-executor`、`auditor_spark`→`gov-spark-audit`。安装器只在 `gov-config/roles.json` 缺失时用它做种子，已存在则永不覆盖。
+当前 `gov/roles.example.json` 是**播种模板**：五个 role 全部为占位符 `<TBD:*>`，`identities` 的 `dev` / `governance` 也均为占位符。**本仓库绝不携带真实模型标识或 GitHub 用户名**；真实值只存在于用户本机 `~/.zcode/gov-config/roles.json`。安装器只在 `gov-config/roles.json` 缺失时用它做种子，已存在则永不覆盖。`agents` 映射为 `reviewer_standard`→`gov-reviewer`、`reviewer_high`→`gov-reviewer`、`executor`→`gov-executor`、`auditor_spark`→`gov-spark-audit`。role 未解析（占位符）时带裁决的制品被 `ROLE_PLACEHOLDER_UNRESOLVED` 阻断；`identities` 未配置时 GitHub 动作被 hook 的身份守卫 fail-closed 拦截。
 
 ### 7.2 milestone.json（`gov-milestone.v1`）
 

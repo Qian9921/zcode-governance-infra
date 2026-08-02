@@ -1,11 +1,11 @@
 {
   "schema": "gov-roles.v1",
   "roles": {
-    "writer": "tuzi-direct-1m/claude-tuzi/claude-opus-5",
-    "executor": "e8ed5e30-e95d-45dc-b265-37acf2ba2583/deepseek-v4-flash",
-    "reviewer_standard": "tuzi-direct-1m/claude-tuzi/claude-fable-5",
-    "reviewer_high": "tuzi-direct-1m/claude-tuzi/claude-fable-5",
-    "auditor_spark": "tuzi-direct-1m/claude-tuzi/claude-fable-5"
+    "writer": "<TBD:writer>",
+    "executor": "<TBD:executor>",
+    "reviewer_standard": "<TBD:reviewer_standard>",
+    "reviewer_high": "<TBD:reviewer_high>",
+    "auditor_spark": "<TBD:auditor_spark>"
   },
   "efforts": {
     "reviewer_standard": "high",
@@ -18,5 +18,9 @@
     "reviewer_high": "gov-reviewer",
     "executor": "gov-executor",
     "auditor_spark": "gov-spark-audit"
+  },
+  "identities": {
+    "dev": "<TBD:dev_login>",
+    "governance": "<TBD:gov_login>"
   }
 }

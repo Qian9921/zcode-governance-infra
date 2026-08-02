@@ -72,9 +72,7 @@ class RolesTests(unittest.TestCase):
         """An all-placeholder roles file loads and reports as unresolved.
 
         The fixture is pinned explicitly rather than taken from the built-in
-        fallback: the shipped defaults are real model identities, so relying on
-        them would make this case depend on what ships, not on placeholder
-        semantics.
+        fallback, keeping placeholder semantics independent of what ships.
         """
         support.pinned_roles(self, resolved=False)
         cfg = roles.load_roles()
@@ -100,27 +98,91 @@ class RolesTests(unittest.TestCase):
         for name in roles.ROLE_NAMES:
             self.assertIn(name, message)
 
-    def test_shipped_defaults_are_fully_resolved(self) -> None:
-        """The built-in fallback ships real identities, not placeholders.
+    def test_shipped_defaults_are_placeholders(self) -> None:
+        """The built-in fallback ships placeholders, never private identifiers.
 
-        Locks the current fact in place: if anyone reverts DEFAULT_ROLES to
-        ``<TBD:*>`` placeholders, this fails immediately.
+        The repository must not carry real model identifiers or GitHub
+        usernames: the seed template ships ``<TBD:*>`` for every role and for
+        the two ``identities``, and the installer ``preserved`` a user's real
+        ``gov-config/roles.json`` instead.  Locks this in: if anyone reverts
+        DEFAULT_ROLES to private values, this fails immediately.
         """
-        self.assertIs(roles.roles_resolved(roles.DEFAULT_ROLES), True)
+        self.assertIs(roles.roles_resolved(roles.DEFAULT_ROLES), False)
         for name in roles.ROLE_NAMES:
             value = roles.DEFAULT_ROLES["roles"][name]
             self.assertIsInstance(value, str)
             self.assertTrue(value)
-            self.assertFalse(roles.is_placeholder(value))
-        # The fallback path (file absent) hands back those same resolved values.
+            self.assertTrue(roles.is_placeholder(value))
+        for name in roles.IDENTITY_NAMES:
+            self.assertTrue(
+                roles.is_placeholder(roles.DEFAULT_ROLES["identities"][name]),
+                f"identity {name} must ship as a placeholder",
+            )
+        self.assertIs(roles.identities_resolved(roles.DEFAULT_ROLES), False)
+        # The fallback path (file absent) hands back those same placeholder values.
         self._patch_env(ZGOV_ROLES_PATH="/nonexistent/roles.json")
         cfg = roles.load_roles()
         self.assertEqual(cfg, roles.validate_roles(roles.DEFAULT_ROLES))
-        self.assertTrue(roles.roles_resolved(cfg))
+        self.assertFalse(roles.roles_resolved(cfg))
+        self.assertFalse(roles.identities_resolved(cfg))
         for name in roles.ROLE_NAMES:
-            self.assertEqual(
-                roles.resolve_role(name, cfg), roles.DEFAULT_ROLES["roles"][name]
-            )
+            with self.assertRaises(roles.RolePlaceholderUnresolved):
+                roles.resolve_role(name, cfg)
+
+    def test_identities_missing_block_is_backfilled(self) -> None:
+        """A config without ``identities`` (pre-identities configs) still loads.
+
+        Backward compatibility: existing real configs have no identities block;
+        they must not crash and must report unresolved identities.
+        """
+        support.pinned_roles(self, resolved=False)
+        cfg = roles.load_roles()
+        self.assertEqual(
+            cfg["identities"],
+            {"dev": "<TBD:dev_login>", "governance": "<TBD:gov_login>"},
+        )
+        self.assertFalse(roles.identities_resolved(cfg))
+        self.assertEqual(roles.identity_for("dev"), "<TBD:dev_login>")
+        self.assertEqual(roles.identity_for("governance"), "<TBD:gov_login>")
+
+    def test_identities_configured_are_resolved(self) -> None:
+        """Non-placeholder identities validate and resolve."""
+        cfg = roles.validate_roles({
+            "schema": roles.ROLES_SCHEMA,
+            "roles": dict(roles.DEFAULT_ROLES["roles"]),
+            "efforts": dict(roles.DEFAULT_ROLES["efforts"]),
+            "identities": {"dev": "dev-login-x", "governance": "gov-login-y"},
+        })
+        self.assertTrue(roles.identities_resolved(cfg))
+        self.assertEqual(roles.identity_for("dev", cfg), "dev-login-x")
+        self.assertEqual(roles.identity_for("governance", cfg), "gov-login-y")
+
+    def test_identities_unknown_key_rejected(self) -> None:
+        """An identities key outside dev/governance raises RoleError."""
+        with self.assertRaises(roles.RoleError) as ctx:
+            roles.validate_roles({
+                "schema": roles.ROLES_SCHEMA,
+                "roles": dict(roles.DEFAULT_ROLES["roles"]),
+                "efforts": dict(roles.DEFAULT_ROLES["efforts"]),
+                "identities": {"dev": "x", "governance": "y", "extra": "z"},
+            })
+        self.assertIn("identities", str(ctx.exception))
+
+    def test_identities_empty_value_rejected(self) -> None:
+        """An empty identity value raises RoleError."""
+        with self.assertRaises(roles.RoleError) as ctx:
+            roles.validate_roles({
+                "schema": roles.ROLES_SCHEMA,
+                "roles": dict(roles.DEFAULT_ROLES["roles"]),
+                "efforts": dict(roles.DEFAULT_ROLES["efforts"]),
+                "identities": {"dev": "", "governance": "y"},
+            })
+        self.assertIn("identities", str(ctx.exception))
+
+    def test_unknown_identity_name_raises(self) -> None:
+        """identity_for rejects names outside dev/governance."""
+        with self.assertRaises(roles.RoleError):
+            roles.identity_for("ops")
 
     def test_roles_example_matches_built_in_defaults(self) -> None:
         """gov/roles.example.json and DEFAULT_ROLES are byte-identical canonically."""

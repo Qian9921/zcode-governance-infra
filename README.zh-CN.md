@@ -240,30 +240,46 @@ evidence reference 后才能 fallback；fallback 不得冒充等价语义或结�
 正确性与证据是硬门。第一优化目标是得到正确判断或正确合并的时间，token/call cost 排第二。
 详见 [docs/review-workflow.md](docs/review-workflow.md)。
 
-## 模型 role 占位符
+## 模型 role 占位符与 GitHub 身份
 
-Codex 版把模型名硬编码在代码里。ZCode 版**全部参数化**为 role，配置文件是
-`$ZCODE_HOME/gov-config/roles.json`（种子来自 `gov/roles.example.json`）：
+Codex 版把模型名和 GitHub 用户名硬编码在代码里。ZCode 版**全部参数化**为 role 与身份，
+配置文件是 `$ZCODE_HOME/gov-config/roles.json`（种子来自 `gov/roles.example.json`）。
+**仓库内绝不携带私有值**：种子模板一律是 `<TBD:*>` 占位符，安装器对用户真实的
+`roles.json` 永远 `preserved`（已存在则绝不覆盖）。
 
-| role | 用途 | 当前值 |
+| role | 用途 | 种子值（换成你自己的） |
 |---|---|---|
-| `writer` | 写 brief/mission 的模型 | `tuzi-direct-1m/claude-tuzi/claude-opus-5` |
-| `executor` | 执行实现的模型 | `e8ed5e30-e95d-45dc-b265-37acf2ba2583/deepseek-v4-flash` |
-| `reviewer_standard` | 低/中风险独立 reviewer | `tuzi-direct-1m/claude-tuzi/claude-fable-5` |
-| `reviewer_high` | 高风险独立 reviewer | `tuzi-direct-1m/claude-tuzi/claude-fable-5` |
-| `auditor_spark` | Spark 内审 auditor | `tuzi-direct-1m/claude-tuzi/claude-fable-5` |
+| `writer` | 写 brief/mission 的模型 | `<TBD:writer>` |
+| `executor` | 执行实现的模型 | `<TBD:executor>` |
+| `reviewer_standard` | 低/中风险独立 reviewer | `<TBD:reviewer_standard>` |
+| `reviewer_high` | 高风险独立 reviewer | `<TBD:reviewer_high>` |
+| `auditor_spark` | Spark 内审 auditor | `<TBD:auditor_spark>` |
 
 `efforts` 已有真实默认值（`reviewer_standard: high`、`reviewer_high: xhigh`、
 `delta_continuation: high`、`auditor_spark: high`），**effort 不允许是占位符**，且
 `delta_continuation` 必须等于 `reviewer_standard`。`agents` 里 `reviewer_standard` 已绑定
 到 ZCode 现有的 `gov-reviewer`，`executor` 绑定到 `gov-executor`。
 
-填法：把 `<TBD:*>` 换成你的 ZCode surface 实际暴露的模型标识，然后重启客户端、开新会话。
+顶层 `identities` 块保存 `pre-bash` hook 双身份守卫用到的两个 GitHub 账号：
 
-**未填时的行为**：结构校验照常运行（模块在占位符状态下跳过 identity 断言），但任何**带
-裁决的制品**会被 `ROLE_PLACEHOLDER_UNRESOLVED` 阻断——`resolve_role()` 和
-`require_roles_resolved()` 抛 `RolePlaceholderUnresolved`。也就是说：可以写、可以跑测试，
-但不能出 approve。
+| 身份 | 用途 | 种子值（换成你自己的） |
+|---|---|---|
+| `identities.dev` | 开发身份：建分支 / commit / push / 开 PR | `<TBD:dev_login>` |
+| `identities.governance` | 治理身份：review / approve / merge | `<TBD:gov_login>` |
+
+填法：安装后编辑 `~/.zcode/gov-config/roles.json`，把所有 `<TBD:*>` 换成 ① 你的 ZCode
+surface 实际暴露的五个模型标识，② `identities` 里两个 GitHub 登录名。安装器永不覆盖这个
+文件，因此升级后你的值仍在。然后重启客户端、开新会话。
+
+**未填时的行为**：
+
+- 结构校验照常运行（模块在占位符状态下跳过 identity 断言），但任何**带裁决的制品**会被
+  `ROLE_PLACEHOLDER_UNRESOLVED` 阻断——`resolve_role()` 和 `require_roles_resolved()` 抛
+  `RolePlaceholderUnresolved`。也就是说：可以写、可以跑测试，但不能出 approve。
+- `identities` 未配置（仍是占位符）时，hook 的 merge gate 与身份守卫 **fail-closed**：
+  `gh pr merge`、`gh pr review`、`gh pr create`、`git push` 等受守卫的 GitHub 动作会被
+  拒绝，理由为「身份未配置：请在 gov-config/roles.json 的 identities 里填写」，绝不因未
+  配置而放行。
 
 ## milestone 冻结事实
 

@@ -44,8 +44,50 @@ LOGIN_CACHE = STATE_DIR / "gh-login-cache.json"
 LOGIN_CACHE_TTL_SEC = 60
 MARKER_TTL_SEC = 7 * 24 * 3600
 
-GOV_LOGIN = "Liang9921"   # 治理身份：review/approve/merge
-DEV_LOGIN = "Qian9921"    # 开发身份：branch/commit/push/开 PR
+# ---- 治理/开发身份：延迟读取，独立于 zgov（hook 必须在 zgov 不可用时也能跑）----
+# 真实身份只存在于用户本机 gov-config/roles.json 的 identities 块；仓库内一律是占位符。
+IDENTITY_PLACEHOLDERS = {"dev": "<TBD:dev_login>", "governance": "<TBD:gov_login>"}
+_identity_cache = None
+
+
+def _identity_path():
+    env_path = os.environ.get("ZGOV_ROLES_PATH")
+    if env_path:
+        return Path(env_path)
+    if "ZCODE_HOME" in os.environ:
+        return Path(os.environ["ZCODE_HOME"]) / "gov-config" / "roles.json"
+    return HOME / ".zcode" / "gov-config" / "roles.json"
+
+
+def _load_identities():
+    """只读 roles.json 的 identities 两个键；任何异常都回落到占位符。"""
+    global _identity_cache
+    if _identity_cache is not None:
+        return _identity_cache
+    identities = dict(IDENTITY_PLACEHOLDERS)
+    try:
+        target = _identity_path()
+        if target.is_file():
+            block = json.loads(target.read_text(encoding="utf-8")).get("identities")
+            if isinstance(block, dict):
+                for key in identities:
+                    value = block.get(key)
+                    if isinstance(value, str) and value:
+                        identities[key] = value
+    except Exception:
+        pass
+    _identity_cache = identities
+    return identities
+
+
+def identity_login(kind):
+    """返回 dev/governance 身份的登录名（未配置时为占位符）。"""
+    return _load_identities()[kind]
+
+
+def identity_unconfigured(kind):
+    """True 表示该身份仍是占位符，无法确认，必须 fail-closed 拦截。"""
+    return identity_login(kind).startswith("<TBD")
 
 MAX_AGENT_DEPTH = 1
 ADDITIONAL_CONTEXT_LIMIT = session_context.ADDITIONAL_CONTEXT_LIMIT
@@ -202,13 +244,19 @@ def marker_path(repo_slug, pr_number):
 
 
 def merge_gate(cmd):
-    """PR 合并硬门禁。fail-closed：任何环节查不了都不许合并。"""
+    """PR 合并硬门禁。fail-closed：身份未配置或任何环节查不了都不许合并。"""
     label = "gh pr merge"
-    # 1. 身份：合并是治理动作，必须 Liang9921
+    # 1. 身份：合并是治理动作，必须由治理身份（identities.governance）执行。
+    #    身份未配置时无法确认 login，fail-closed 拦截，绝不因未配置而放行。
+    if identity_unconfigured("governance"):
+        deny("治理身份未配置：请在 gov-config/roles.json 的 identities 里填写（governance），"
+             "配置前 PR 合并一律拦截（fail-closed）。",
+             "merge_gate.identity_unconfigured", label, cmd, tool="Bash")
+    gov_login = identity_login("governance")
     login = gh_login(fresh=True)
-    if login != GOV_LOGIN:
-        deny(f"PR 合并必须由治理身份 {GOV_LOGIN} 执行，当前 active login 是 {login or '未知'}。"
-             f"直接运行 gh auth switch --user {GOV_LOGIN} 后重试（切换已预授权）。",
+    if login != gov_login:
+        deny(f"PR 合并必须由治理身份 {gov_login} 执行，当前 active login 是 {login or '未知'}。"
+             f"直接运行 gh auth switch --user {gov_login} 后重试（切换已预授权）。",
              "merge_gate.identity", label, cmd, tool="Bash")
 
     # 2. 解析 PR 并 live 查 head（不用缓存，merge 罕见且必须新鲜）
@@ -270,22 +318,28 @@ def strip_rtk(cmd):
 
 
 def identity_guard(cmd):
-    """双身份守卫。fail-open：gh 查询失败时放行（网络抖动不挡工作），仅记 receipt。"""
+    """双身份守卫。身份未配置时 fail-closed（无法确认身份，绝不放行）；
+    gh 查询失败时 fail-open（网络抖动不挡工作），仅记 receipt。"""
     c = strip_rtk(cmd)
     need = None
     if GOV_ACTION_RE.search(c):
-        need = (GOV_LOGIN, "治理动作（review/approve/merge）")
+        need = ("governance", "治理动作（review/approve/merge）")
     elif DEV_ACTION_RE.search(c):
-        need = (DEV_LOGIN, "开发动作（push/开 PR/评论/release）")
+        need = ("dev", "开发动作（push/开 PR/评论/release）")
     if not need:
         return
+    if identity_unconfigured(need[0]):
+        deny(f"GitHub 身份未配置：{need[1]}需要 {need[0]} 身份，但 gov-config/roles.json 的 "
+             f"identities.{need[0]} 仍是占位符。请在 gov-config/roles.json 的 identities 里填写。",
+             "identity.unconfigured", need[1], cmd, tool="Bash")
+    expected = identity_login(need[0])
     login = gh_login(fresh=False)
     if login is None:
         receipt("PreToolUse", "warn", "identity.gh_unreachable", need[1], cmd, tool="Bash")
         return
-    if login != need[0]:
-        deny(f"GitHub 双身份隔离：{need[1]}必须由 {need[0]} 执行，当前 active login 是 {login}。"
-             f"直接运行 gh auth switch --user {need[0]} 后重试（切换已预授权）；但绝不用一个身份干另一个身份的活。",
+    if login != expected:
+        deny(f"GitHub 双身份隔离：{need[1]}必须由 {expected} 执行，当前 active login 是 {login}。"
+             f"直接运行 gh auth switch --user {expected} 后重试（切换已预授权）；但绝不用一个身份干另一个身份的活。",
              "identity.mismatch", need[1], cmd, tool="Bash")
     receipt("PreToolUse", "pass", "identity.ok", need[1], cmd, tool="Bash")
 
@@ -630,8 +684,8 @@ def cmd_session_start():
     id_state = f"gh active={login or '未知'}"
     if accounts:
         id_state += f"（已登录: {', '.join(sorted(set(accounts)))}）"
-        if DEV_LOGIN not in accounts:
-            id_state += f"；⚠️ 开发身份 {DEV_LOGIN} 未登录，开发类 GitHub 动作将被门禁拦截"
+        if not identity_unconfigured("dev") and identity_login("dev") not in accounts:
+            id_state += f"；⚠️ 开发身份 {identity_login('dev')} 未登录，开发类 GitHub 动作将被门禁拦截"
     parts.append(id_state)
 
     cwd = data.get("cwd") or os.getcwd()
@@ -726,8 +780,13 @@ def cmd_review_pass(argv):
     }, ensure_ascii=False, indent=2))
     os.chmod(mp, 0o600)
     receipt("review-pass", "pass", "marker.written", f"{args.repo}#pr{args.pr}")
-    print(f"✅ marker 已登记：{args.repo} PR #{args.pr} @ {args.sha[:12]}。"
-          f"在 head 不变的前提下，merge gate 将放行本次合并（仍需治理身份 {GOV_LOGIN}）。")
+    if identity_unconfigured("governance"):
+        print(f"✅ marker 已登记：{args.repo} PR #{args.pr} @ {args.sha[:12]}。"
+              f"在 head 不变的前提下，merge gate 将放行本次合并（仍需在 gov-config/roles.json 的 "
+              f"identities.governance 配置治理身份后才能合并）。")
+    else:
+        print(f"✅ marker 已登记：{args.repo} PR #{args.pr} @ {args.sha[:12]}。"
+              f"在 head 不变的前提下，merge gate 将放行本次合并（仍需治理身份 {identity_login('governance')}）。")
 
 
 # ---------------------------------------------------------------- main

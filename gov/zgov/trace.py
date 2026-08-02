@@ -1044,8 +1044,12 @@ def _validate_legacy_artifact(
     # This is compatibility only.  It intentionally admits no policy-selected
     # route and cannot be ingested into a new approval packet.
     legacy_expected_model = resolve_reviewer("high")["model"]
+    gov_login = roles.identity_for("governance")
     if (
-        artifact["reviewer_login"] != "Liang9921"
+        (
+            not roles.is_placeholder(gov_login)
+            and artifact["reviewer_login"] != gov_login
+        )
         or (
             not roles.is_placeholder(legacy_expected_model)
             and artifact["reviewer_model"] != legacy_expected_model
@@ -1092,7 +1096,15 @@ def _formal_artifact_shape(artifact: Mapping[str, Any]) -> dict[str, Any]:
         raise TraceError("strict formal Independent artifact fields")
     if artifact["schema"] != "independent-review.v16" or artifact["verdict"] not in {"APPROVE", "REQUEST_CHANGES"}:
         raise TraceError("verified Independent artifact required")
-    if artifact["reviewer_login"] != "Liang9921" or artifact["report_only"] is not True or artifact["reviewer_is_writer"] is not False:
+    gov_login = roles.identity_for("governance")
+    if (
+        (
+            not roles.is_placeholder(gov_login)
+            and artifact["reviewer_login"] != gov_login
+        )
+        or artifact["report_only"] is not True
+        or artifact["reviewer_is_writer"] is not False
+    ):
         raise TraceError("Independent reviewer separation mismatch")
     context_mode = artifact["context_mode"]
     if context_mode == "author_contextual" or context_mode not in _FORMAL_CONTEXT_MODES:
@@ -1805,7 +1817,13 @@ def validate_review_packet(value: Any) -> dict[str, Any]:
         raise TraceError("missing/additional review packet fields")
     if value["schema"] != "review-packet.v16":
         raise TraceError("schema")
-    if value["author_login"] != "Qian9921" or value["reviewer_login"] != "Liang9921" or value["author_login"] == value["reviewer_login"]:
+    dev_login = roles.identity_for("dev")
+    gov_login = roles.identity_for("governance")
+    if (
+        (not roles.is_placeholder(dev_login) and value["author_login"] != dev_login)
+        or (not roles.is_placeholder(gov_login) and value["reviewer_login"] != gov_login)
+        or value["author_login"] == value["reviewer_login"]
+    ):
         raise TraceError("fixed author/reviewer identity required")
     mission_id = _id(value["mission_id"], "$.mission_id")
     base = _sha(value["base_sha"], "$.base_sha")
@@ -1867,8 +1885,8 @@ def validate_review_packet(value: Any) -> dict[str, Any]:
     result = {
         "schema": "review-packet.v16",
         "mission_id": mission_id,
-        "author_login": "Qian9921",
-        "reviewer_login": "Liang9921",
+        "author_login": value["author_login"],
+        "reviewer_login": value["reviewer_login"],
         "base_sha": base,
         "head_sha": head,
         "tree_sha": tree,
@@ -1933,8 +1951,8 @@ def render_pr_trace(
     unsigned: dict[str, Any] = {
         "schema": "review-packet.v16",
         "mission_id": mission_id,
-        "author_login": "Qian9921",
-        "reviewer_login": "Liang9921",
+        "author_login": roles.identity_for("dev"),
+        "reviewer_login": roles.identity_for("governance"),
         "base_sha": base_sha,
         "head_sha": head_sha,
         "tree_sha": tree_sha,
@@ -1979,11 +1997,16 @@ def render_pr_trace(
     if delta_sha256 is not None:
         unsigned["delta_sha256"] = _sha256(delta_sha256, "$.delta_sha256")
     public_lineage = "DISPATCH" if lineage_mode == "DISPATCH_TRANSCRIPT" else lineage_mode
+    # 公开 body 只出现已解析的身份；占位符时退化为中性角色标签，绝不写私有用户名。
+    dev_login = roles.identity_for("dev")
+    gov_login = roles.identity_for("governance")
+    author_label = dev_login if not roles.is_placeholder(dev_login) else "dev-identity"
+    reviewer_label = gov_login if not roles.is_placeholder(gov_login) else "governance-identity"
     body = "\n".join(
         [
             "### V16 productivity PR trace",
             f"- mission: `{mission_id}`",
-            "- author: `Qian9921`; independent reviewer: `Liang9921`",
+            f"- author: `{author_label}`; independent reviewer: `{reviewer_label}`",
             f"- base: `{base_sha}`; head: `{head_sha}`; tree: `{tree_sha}`",
             f"- lineage: `{public_lineage}`; coverage: `{unsigned['coverage_status']}`; round: `{round}`",
             f"- checks: {len(normalized_checks)}; findings: {len(findings)}; verdict: `null` (author renderer)",

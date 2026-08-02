@@ -11,6 +11,8 @@ ROLES_SCHEMA = "gov-roles.v1"
 ROLE_NAMES = ("writer", "executor", "reviewer_standard", "reviewer_high", "auditor_spark")
 EFFORT_NAMES = ("reviewer_standard", "reviewer_high", "delta_continuation", "auditor_spark")
 VALID_EFFORTS = frozenset({"low", "medium", "high", "xhigh"})
+IDENTITY_NAMES = ("dev", "governance")
+IDENTITY_PLACEHOLDERS = {"dev": "<TBD:dev_login>", "governance": "<TBD:gov_login>"}
 
 _PLACEHOLDER_RE = re.compile(r"^<TBD(:[A-Za-z0-9_.-]+)?>$")
 _AGENT_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
@@ -18,11 +20,11 @@ _AGENT_KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
 DEFAULT_ROLES: dict[str, Any] = {
     "schema": "gov-roles.v1",
     "roles": {
-        "writer": "tuzi-direct-1m/claude-tuzi/claude-opus-5",
-        "executor": "e8ed5e30-e95d-45dc-b265-37acf2ba2583/deepseek-v4-flash",
-        "reviewer_standard": "tuzi-direct-1m/claude-tuzi/claude-fable-5",
-        "reviewer_high": "tuzi-direct-1m/claude-tuzi/claude-fable-5",
-        "auditor_spark": "tuzi-direct-1m/claude-tuzi/claude-fable-5"
+        "writer": "<TBD:writer>",
+        "executor": "<TBD:executor>",
+        "reviewer_standard": "<TBD:reviewer_standard>",
+        "reviewer_high": "<TBD:reviewer_high>",
+        "auditor_spark": "<TBD:auditor_spark>"
     },
     "efforts": {
         "reviewer_standard": "high",
@@ -35,6 +37,10 @@ DEFAULT_ROLES: dict[str, Any] = {
         "reviewer_high": "gov-reviewer",
         "executor": "gov-executor",
         "auditor_spark": "gov-spark-audit"
+    },
+    "identities": {
+        "dev": "<TBD:dev_login>",
+        "governance": "<TBD:gov_login>"
     }
 }
 
@@ -108,7 +114,7 @@ def validate_roles(value: Any, path: str = "$") -> dict[str, Any]:
     if not isinstance(value, dict):
         raise RoleError(f"{path}: object required")
 
-    allowed_top = {"schema", "roles", "efforts", "agents"}
+    allowed_top = {"schema", "roles", "efforts", "agents", "identities"}
     extra = set(value) - allowed_top
     if extra:
         raise RoleError(f"{path}.{next(iter(sorted(extra)))}: additional property not allowed")
@@ -170,11 +176,32 @@ def validate_roles(value: Any, path: str = "$") -> dict[str, Any]:
         if not isinstance(agent_value, str) or not agent_value:
             raise RoleError(f"{path}.agents.{key}: non-empty string required")
 
+    # identities: keys must be exactly dev/governance with non-empty string
+    # values.  A missing block is backfilled to placeholders (backward
+    # compatible with configs shipped before identities existed).
+    identities_raw = value.get("identities")
+    identities: dict[str, str] = {}
+    if identities_raw is None:
+        identities = dict(IDENTITY_PLACEHOLDERS)
+    elif isinstance(identities_raw, dict):
+        for name in IDENTITY_NAMES:
+            item = identities_raw.get(name)
+            if not isinstance(item, str) or not item:
+                raise RoleError(f"{path}.identities.{name}: non-empty string required")
+            identities[name] = item
+        extra_keys = set(identities_raw) - set(IDENTITY_NAMES)
+        if extra_keys:
+            raise RoleError(f"{path}.identities: keys must equal {IDENTITY_NAMES} "
+                            f"(extra {sorted(extra_keys)})")
+    else:
+        raise RoleError(f"{path}.identities: object required")
+
     return {
         "schema": value["schema"],
         "roles": {name: roles[name] for name in ROLE_NAMES},
         "efforts": {name: efforts[name] for name in EFFORT_NAMES},
         "agents": dict(agents),
+        "identities": {name: identities[name] for name in IDENTITY_NAMES},
     }
 
 
@@ -241,3 +268,30 @@ def agent_for(name: str, roles: dict[str, Any] | None = None) -> str | None:
     if value is None or is_placeholder(value):
         return None
     return value
+
+
+def identity_for(name: str, roles: dict[str, Any] | None = None) -> str:
+    """Return the configured GitHub identity for *name* (``dev``/``governance``).
+
+    The raw value is returned, placeholder or not — callers combine this with
+    ``is_placeholder`` to decide whether an identity assertion can run.
+    """
+    if name not in IDENTITY_NAMES:
+        raise RoleError(f"unknown identity '{name}'")
+    cfg = _ensure_roles(roles)
+    identities = cfg.get("identities")
+    if not isinstance(identities, dict):
+        return IDENTITY_PLACEHOLDERS[name]
+    value = identities.get(name)
+    if isinstance(value, str) and value:
+        return value
+    return IDENTITY_PLACEHOLDERS[name]
+
+
+def identities_resolved(roles: dict[str, Any] | None = None) -> bool:
+    """Return True when both GitHub identities carry non-placeholder values."""
+    cfg = _ensure_roles(roles)
+    identities = cfg.get("identities")
+    if not isinstance(identities, dict):
+        return False
+    return all(not is_placeholder(identities.get(name)) for name in IDENTITY_NAMES)

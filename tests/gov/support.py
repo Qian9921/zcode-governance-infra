@@ -103,6 +103,26 @@ def effort_for_risk(risk: str, *, delta: bool = False) -> str:
     raise ValueError(f"review risk must be low/medium/high: {risk}")
 
 
+# Neutral GitHub logins for test packets.  ``trace`` validates author/reviewer
+# logins against ``roles.identities`` and skips the equality assertion while the
+# identity is still a placeholder; a hard-coded real username would leak private
+# identity data and break the moment a real ``roles.json`` is installed.
+NEUTRAL_DEV_LOGIN = "dev-login-x"
+NEUTRAL_GOV_LOGIN = "gov-login-y"
+
+
+def author_login() -> str:
+    """Return the current dev identity, or a neutral test value under placeholders."""
+    value = roles.identity_for("dev")
+    return value if not roles.is_placeholder(value) else NEUTRAL_DEV_LOGIN
+
+
+def reviewer_login() -> str:
+    """Return the current governance identity, or a neutral test value."""
+    value = roles.identity_for("governance")
+    return value if not roles.is_placeholder(value) else NEUTRAL_GOV_LOGIN
+
+
 def mission_review_risk(mission: dict[str, Any]) -> str:
     """Return the risk that selects a mission's independent reviewer.
 

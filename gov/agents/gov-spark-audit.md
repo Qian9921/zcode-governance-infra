@@ -1,7 +1,7 @@
 ---
 name: gov-spark-audit
 description: 零上下文有界内环审计员（report-only）。作者在 IMPLEMENTING 与 INNER_AUDIT_COMPLETE 之间按真实风险与范围调用 0 到 3 个，每个只审一个显式 domain 与 scope，输出带 severity/label/反例/证据的 findings 清单。不做修复、不做裁决、不 approve/merge。
-model: tuzi-direct-1m/claude-tuzi/claude-fable-5
+model: <TBD:auditor_spark>
 color: yellow
 tools: Glob, Grep, LS, Read, NotebookRead, mcp__codegraph__codegraph_explore, mcp__semble__search, mcp__semble__find_related
 ---

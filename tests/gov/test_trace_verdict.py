@@ -3,6 +3,8 @@
 import copy
 import unittest
 
+import support
+
 from zgov.contracts import build_pre_execution_closure_authority, canonical_sha256
 from zgov.review_policy import resolve_reviewer
 from zgov.trace import (
@@ -252,7 +254,7 @@ def formal_artifact(
     }
     artifact = {
         "schema": "independent-review.v16",
-        "reviewer_login": "Liang9921",
+        "reviewer_login": support.reviewer_login(),
         "reviewer_model": basis["reviewer_model"],
         "reasoning_effort": basis["reasoning_effort"],
         "reviewer_route": basis["reviewer_route"],
@@ -333,8 +335,8 @@ def raw_packet(*, findings=None, verdict=None, coverage="COMPLETE", unreviewed=N
     packet = {
         "schema": "review-packet.v16",
         "mission_id": "V16-PRODUCTIVITY",
-        "author_login": "Qian9921",
-        "reviewer_login": "Liang9921",
+        "author_login": support.author_login(),
+        "reviewer_login": support.reviewer_login(),
         "base_sha": BASE,
         "head_sha": HEAD,
         "tree_sha": TREE,

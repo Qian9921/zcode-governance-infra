@@ -6,8 +6,8 @@
 
 ZCode 恰好有 7 个 hook 事件：`SessionStart`、`UserPromptSubmit`、`PreToolUse`、`PermissionRequest`、`PostToolUse`、`PostToolUseFailure`、`Stop`。以下 hook 会拦截工具调用，被 deny 时阅读原因并按流程修正，不要尝试绕过：
 
-- **pr-merge-gate**（`PreToolUse`/`Bash`）：`gh pr merge` 必须满足 ① active login=Liang9921 ② 存在有效 review marker ③ live head SHA 与 marker 一致，否则硬阻断（fail-closed）。
-- **gh-identity-guard**（`PreToolUse`/`Bash`）：开发动作（push/开 PR/评论/release）要 Qian9921，治理动作（review/approve/merge）要 Liang9921，mismatch 即拦截。
+- **pr-merge-gate**（`PreToolUse`/`Bash`）：`gh pr merge` 必须满足 ① active login=治理身份（`identities.governance`）② 存在有效 review marker ③ live head SHA 与 marker 一致，否则硬阻断（fail-closed）；身份未配置（占位符）时同样拦截，绝不因未配置而放行。
+- **gh-identity-guard**（`PreToolUse`/`Bash`）：开发动作（push/开 PR/评论/release）要开发身份（`identities.dev`），治理动作（review/approve/merge）要治理身份（`identities.governance`），mismatch 即拦截；任一身份未配置时 fail-closed 拦截。
 - **credential-guard**（`PreToolUse`/`Read|Edit|Write`）：禁止读写 `~/.ssh`、`~/.config/gh/hosts.yml`、`~/.zcode/cli/config.json` 等凭据文件。
 - **rtk-rewrite**（`PreToolUse`/`Bash`）：`git status/log/diff`、`pytest` 等受支持命令会被自动无缝改写为 `rtk ...`，属正常现象。
 - **delegation-guard**（`PreToolUse` matcher `Agent`）：校验委派 packet 与 `max_depth=1`；嵌套再委派 deny。
@@ -49,19 +49,20 @@ hook stdout 是**严格 schema**，只允许 5 个键：`hookEventName`、`permi
   2. 结论为 **APPROVE** 后，运行 helper 登记 marker：
      `python3 ~/.zcode/hooks/zcode_hook.py review-pass --repo <owner/name> --pr <N> --sha <Head-SHA>`
      （helper 会 live 校验 SHA 与 PR 当前 head 一致，不一致拒绝登记）
-  3. 确认当前 active login 是治理身份 `Liang9921`（不是则直接 `gh auth switch --user Liang9921`，已预授权）。
-  4. 执行 `gh pr merge`。merge gate 会实时复核：身份= Liang9921、marker 存在且未过期、live head SHA 与 marker 精确一致。
+  3. 确认当前 active login 是治理身份（`identities.governance` 配置的账号，不是则直接 `gh auth switch --user <治理身份>`，已预授权）。
+  4. 执行 `gh pr merge`。merge gate 会实时复核：身份=治理身份、marker 存在且未过期、live head SHA 与 marker 精确一致。
 - 审查结论为 **REQUEST_CHANGES** 时：修复问题 → 重新调用 `gov-reviewer` 复审，循环直到 APPROVE。
 - head 漂移（审查后又有新 commit）会使 marker 自动失效，必须重新审查——hook 强制，无例外。
 - **严禁**跳过审查直接合并，严禁手写/伪造 marker 文件绕过 helper。
 
 ## GitHub 双身份（Route 2）
 
-- **开发身份固定为 `Qian9921`**：建开发分支、写 commit、push、开 PR、回复评论 —— **已预授权，直接执行，无需请示**；**不得** review/approve/merge 自己或他人的 PR。
-- **治理身份固定为 `Liang9921`**：review/comment、approve、merge —— **已预授权**，但仍须 `gov-reviewer` APPROVE 且 head SHA 匹配（这是**质量门禁**，不是用户授权门禁，hook 硬执行）；**不得**写 feature commit、push 开发分支或开开发 PR。
+- **开发身份（`identities.dev`）**：建开发分支、写 commit、push、开 PR、回复评论 —— **已预授权，直接执行，无需请示**；**不得** review/approve/merge 自己或他人的 PR。
+- **治理身份（`identities.governance`）**：review/comment、approve、merge —— **已预授权**，但仍须 `gov-reviewer` APPROVE 且 head SHA 匹配（这是**质量门禁**，不是用户授权门禁，hook 硬执行）；**不得**写 feature commit、push 开发分支或开开发 PR。
 - 每次外部 GitHub 动作前，先用只读命令（`gh api user --jq .login`）确认当前 active login 精确匹配目标身份；**不匹配就直接 `gh auth switch --user <目标身份>` 自动切换，无需请示**。
-- **身份分离本身不可放弃**：Qian 的 PR 必须由 Liang review/approve/merge，绝不自审自合。切换账号已预授权，但绝不用一个身份干另一个身份的活。
-- Qian9921 是**唯一 Git 变更通道**（single Git owner）。
+- **身份分离本身不可放弃**：开发身份的 PR 必须由治理身份 review/approve/merge，绝不自审自合。切换账号已预授权，但绝不用一个身份干另一个身份的活。
+- 开发身份（`identities.dev`）是**唯一 Git 变更通道**（single Git owner）。
+- 上述两个身份都配置在本机 `~/.zcode/gov-config/roles.json` 的 `identities` 块（`dev` / `governance`），**绝不出现在本仓库内**；未配置时 hook 对这些 GitHub 动作 fail-closed 拦截。
 
 ## Git 安全边界
 

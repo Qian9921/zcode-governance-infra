@@ -1,7 +1,7 @@
 ---
 name: gov-executor
 description: 专职执行和体力活的高速编码工人。所有代码实现、bug 修复、重构、批量修改、格式化、跑测试、执行命令等落地工作都委派给它。主智能体下达具体任务，它负责快速、完整地执行并汇报结果。
-model: e8ed5e30-e95d-45dc-b265-37acf2ba2583/deepseek-v4-flash
+model: <TBD:executor>
 color: green
 ---
 

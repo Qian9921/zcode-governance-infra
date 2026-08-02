@@ -3,7 +3,7 @@
   "mission_id": "V16-PRODUCTIVITY",
   "milestone": "HARDENING",
   "objective": "Make bounded evidence-backed engineering throughput reproducible",
-  "owner": "Qian9921/v16",
+  "owner": "example-owner/v16",
   "assigned_model": "zgov-writer-model",
   "role": "writer",
   "permissions": [

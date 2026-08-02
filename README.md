@@ -265,19 +265,21 @@ Correctness and evidence are hard gates. The first optimization target is time t
 verdict or a correct merge; token/call cost is second. See
 [docs/review-workflow.md](docs/review-workflow.md).
 
-## Model role placeholders
+## Model role placeholders and GitHub identities
 
-The Codex original hard-coded model names. The ZCode port **parameterizes all of them** as
-roles configured in `$ZCODE_HOME/gov-config/roles.json` (seeded from
-`gov/roles.example.json`):
+The Codex original hard-coded model names and GitHub usernames. The ZCode port
+**parameterizes all of them** as roles and identities configured in
+`$ZCODE_HOME/gov-config/roles.json` (seeded from `gov/roles.example.json`). The repository
+**never carries private values**: the seed template ships `<TBD:*>` placeholders, and the
+installer `preserved` a user's real `roles.json` (it never overwrites it).
 
-| Role | Purpose | Current value |
+| Role | Purpose | Seed value (replace with your own) |
 |---|---|---|
-| `writer` | writes briefs/missions | `tuzi-direct-1m/claude-tuzi/claude-opus-5` |
-| `executor` | performs the implementation | `e8ed5e30-e95d-45dc-b265-37acf2ba2583/deepseek-v4-flash` |
-| `reviewer_standard` | low/medium-risk independent reviewer | `tuzi-direct-1m/claude-tuzi/claude-fable-5` |
-| `reviewer_high` | high-risk independent reviewer | `tuzi-direct-1m/claude-tuzi/claude-fable-5` |
-| `auditor_spark` | Spark inner-audit auditor | `tuzi-direct-1m/claude-tuzi/claude-fable-5` |
+| `writer` | writes briefs/missions | `<TBD:writer>` |
+| `executor` | performs the implementation | `<TBD:executor>` |
+| `reviewer_standard` | low/medium-risk independent reviewer | `<TBD:reviewer_standard>` |
+| `reviewer_high` | high-risk independent reviewer | `<TBD:reviewer_high>` |
+| `auditor_spark` | Spark inner-audit auditor | `<TBD:auditor_spark>` |
 
 `efforts` already carry real defaults (`reviewer_standard: high`, `reviewer_high: xhigh`,
 `delta_continuation: high`, `auditor_spark: high`). **Effort values may never be
@@ -285,13 +287,29 @@ placeholders**, and `delta_continuation` must equal `reviewer_standard`. Under `
 `reviewer_standard` is bound to the existing ZCode agent `gov-reviewer` and `executor` to
 `gov-executor`.
 
-To fill them in, replace each `<TBD:*>` with a model identifier that your ZCode surface
-actually exposes, then restart the client and start a fresh session.
+The top-level `identities` block holds the two GitHub accounts used by the `pre-bash` hook's
+dual-identity guard:
 
-**Behavior while unresolved**: structural validation still runs (modules skip identity
-assertions on placeholders), but any **verdict-bearing artifact** is blocked with
-`ROLE_PLACEHOLDER_UNRESOLVED` — `resolve_role()` and `require_roles_resolved()` raise
-`RolePlaceholderUnresolved`. You can author and test; you cannot approve.
+| Identity | Purpose | Seed value (replace with your own) |
+|---|---|---|
+| `identities.dev` | development identity: branch / commit / push / open PR | `<TBD:dev_login>` |
+| `identities.governance` | governance identity: review / approve / merge | `<TBD:gov_login>` |
+
+**How to fill them in**: after installing, edit `~/.zcode/gov-config/roles.json` and replace
+every `<TBD:*>` with (a) the five model identifiers your ZCode surface actually exposes and
+(b) the two GitHub logins in `identities`. The installer never overwrites this file, so your
+values survive upgrades. Then restart the client and start a fresh session.
+
+**Behavior while unresolved**:
+
+- Structural validation still runs (modules skip identity assertions on placeholders), but any
+  **verdict-bearing artifact** is blocked with `ROLE_PLACEHOLDER_UNRESOLVED` —
+  `resolve_role()` and `require_roles_resolved()` raise `RolePlaceholderUnresolved`. You can
+  author and test; you cannot approve.
+- With unconfigured identities (placeholders), the hook's merge gate and identity guard
+  **fail closed**: `gh pr merge`, `gh pr review`, `gh pr create`, `git push`, and other
+  guarded GitHub actions are denied with a "身份未配置：请在 gov-config/roles.json 的
+  identities 里填写" reason instead of being allowed through.
 
 ## Frozen milestone facts
 
