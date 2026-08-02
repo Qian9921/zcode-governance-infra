@@ -1,0 +1,22 @@
+{
+  "schema": "gov-roles.v1",
+  "roles": {
+    "writer": "tuzi-direct-1m/claude-tuzi/claude-opus-5",
+    "executor": "e8ed5e30-e95d-45dc-b265-37acf2ba2583/deepseek-v4-flash",
+    "reviewer_standard": "tuzi-direct-1m/claude-tuzi/claude-fable-5",
+    "reviewer_high": "tuzi-direct-1m/claude-tuzi/claude-fable-5",
+    "auditor_spark": "tuzi-direct-1m/claude-tuzi/claude-fable-5"
+  },
+  "efforts": {
+    "reviewer_standard": "high",
+    "reviewer_high": "xhigh",
+    "delta_continuation": "high",
+    "auditor_spark": "high"
+  },
+  "agents": {
+    "reviewer_standard": "gov-reviewer",
+    "reviewer_high": "gov-reviewer",
+    "executor": "gov-executor",
+    "auditor_spark": "gov-spark-audit"
+  }
+}

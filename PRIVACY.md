@@ -1,0 +1,9 @@
+# Privacy
+
+The tracked package intentionally excludes sessions, prompts, transcripts, receipt JSONL, review markers, credentials, tokens, plugin/cache/connection state, model caches, and user data. `$ZCODE_HOME` is represented only as a placeholder; the ZCode user configuration file is referred to as `$ZCODE_HOME/cli/config.json` rather than by a concrete home-directory path.
+
+`scripts/verify-governance.py` scans every tracked file for forbidden path fragments (`sessions`, `receipts`, `plugins`, `connections`, `models_cache.json`, `.env`) and four forbidden content patterns: GitHub tokens (`gh[pso]_…`), session/turn/prompt/transcript identifier assignments, absolute `/home/` paths, and ZCode session identifiers (`sess_…`). The ZCode configuration *path* `/.zcode/cli/config.json` is deliberately not a forbidden pattern: the path is public, only its contents are sensitive, and forbidding it would prevent the credential guard in `gov/hooks/zcode_hook.py` from naming the file in its deny list. Any secret that file could contain is still caught by the token and session patterns. It also verifies the exact manifest path/hash boundary. Only `PRIVACY.md`, `SECURITY.md`, and `gov/zgov/fixtures/examples/` are exempt from the content patterns.
+
+Hook receipts are an allowlist projection over exactly twenty fields (`hook_receipt._SAFE_FIELDS`); session, turn, tool-call, and task identifiers are stored only as sha256 digests. The receipt directory is created and enforced at mode 0700, files are opened with `O_NOFOLLOW` at 0600, and a symlinked receipt directory is rejected outright. The strict toolchain doctor records hashes and normalized reason codes, never raw command output, absolute paths, prompts, environment variables, or credentials. Sanitized evidence records counts and hashes, never raw runtime data.
+
+See `docs/privacy-threat-model.md` for the full threat model, including the explicitly out-of-scope coordinated-forgery threat.

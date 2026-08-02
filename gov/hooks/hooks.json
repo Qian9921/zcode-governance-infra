@@ -1,0 +1,48 @@
+{
+  "version": "16.0.0",
+  "schema": "zgov-hooks.v1",
+  "entry": "zcode_hook.py",
+  "note": "Declarative manifest for humans and the installer. The authoritative registration lives in ~/.zcode/cli/config.json under hooks.events.",
+  "additional_context_limit": 1200,
+  "events": {
+    "SessionStart": [
+      {"subcommand": "session-start", "timeoutMs": 20000}
+    ],
+    "PreToolUse": [
+      {"matcher": "Bash", "subcommand": "pre-bash", "timeoutMs": 30000},
+      {"matcher": "Read|Edit|Write", "subcommand": "pre-file", "timeoutMs": 5000},
+      {"matcher": "Agent|mcp__codegraph.*|mcp__semble.*|Grep", "subcommand": "pre-tool", "timeoutMs": 10000}
+    ],
+    "PostToolUse": [
+      {"matcher": "Agent", "subcommand": "post-agent", "timeoutMs": 5000}
+    ]
+  },
+  "matcher_contract": {
+    "case_sensitive_regex": true,
+    "matches": "tool name for tool events; omitted matcher matches everything; an invalid regex silently never matches",
+    "aliases": {"Task": "Agent", "ApplyPatch": "Write|Edit"}
+  },
+  "delegation": {
+    "max_depth": 1,
+    "spawn_tool": "Agent",
+    "depth_env": "ZGOV_AGENT_DEPTH",
+    "nested_spawn": "denied",
+    "note": "ZCode has no SubagentStart event; Codex SubagentStart semantics map to PreToolUse with matcher Agent."
+  },
+  "tool_routing": {
+    "preflight": "tool-preflight.v16 status=ready before repository work",
+    "known_structure": "mcp__codegraph__codegraph_explore",
+    "semantic_discovery": "mcp__semble__search",
+    "shell_context_output": "rtk",
+    "exact_text": "rg",
+    "fallback_requires": ["preferred_attempt", "reason_code", "evidence_ref"],
+    "semantic_inference": "brief-declared-not-blanket-denied",
+    "actual_usage": "tool-usage.v16 receipt-backed and task-relevant"
+  },
+  "output_contract": {
+    "allowed_keys": ["hookEventName", "permissionDecision", "permissionDecisionReason", "additionalContext", "updatedInput"],
+    "note": "ZCode hook stdout is a strict schema; any extra key fails validation",
+    "exit_codes": {"0": "pass", "2": "block", "other": "error"},
+    "receipt_sink": "~/.zcode/hooks/receipts/<UTC-date>.jsonl"
+  }
+}

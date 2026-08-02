@@ -1,0 +1,29 @@
+{
+  "schema": "gov-milestone.v1",
+  "frozen": false,
+  "milestone_id": null,
+  "repo": null,
+  "base_sha": null,
+  "base_tree": null,
+  "spark": {
+    "audit_ids": [],
+    "expected_raw_platform_sha256": {},
+    "normalized_finding_ids": {},
+    "author_closure_denominator": null,
+    "author_finding_ids": [],
+    "historical_findings": {},
+    "expected_historical": {},
+    "expected_current": {}
+  },
+  "transcript": {
+    "mission_scope_sha256": null,
+    "compiled_plan_sha256": null,
+    "audited_parent_sha": null,
+    "author_closure_plan_sha256": null
+  },
+  "gate_stage_map": {
+    "G-TARGETED": "targeted",
+    "G-FULL": "full",
+    "G-FRESH": "fresh"
+  }
+}
